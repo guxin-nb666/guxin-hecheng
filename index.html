@@ -40,8 +40,8 @@
         let dangerLineY = 160; 
         let dangerFrames = 0;
 
-        // 调整半径，防止过大导致满屏
-        const radii = [20, 28, 35, 42, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170, 180, 190, 200];
+        // 调整半径序列：guxin1 到 guxin20 逐渐变大
+        const radii = [22, 30, 38, 46, 55, 65, 75, 85, 95, 105, 115, 125, 135, 145, 155, 165, 175, 185, 195, 210];
         const images = [];
         const TOTAL = 20;
         let loaded = 0;
@@ -54,11 +54,9 @@
                     loaded++;
                     statusText.innerText = `已就绪 (${loaded}/${TOTAL})`;
                     progressBar.style.width = (loaded / TOTAL * 100) + '%';
-                    if (loaded === TOTAL) {
-                        document.getElementById('menu').classList.remove('hidden');
-                    }
+                    if (loaded === TOTAL) document.getElementById('menu').classList.remove('hidden');
                 };
-                img.onerror = () => { statusText.innerText = `缺少: guxin${i}.png`; };
+                img.onerror = () => { statusText.innerText = `加载失败: guxin${i}.png`; };
                 images.push(img);
             }
         }
@@ -89,25 +87,25 @@
 
             update() {
                 if (!this.isDropped) return;
-                this.vy += 0.85; // 重力加速
+                this.vy += 0.85; // 重力
                 this.x += this.vx;
                 this.y += this.vy;
 
-                // 边界约束
+                // 墙壁碰撞与位置修正
                 if (this.x < this.radius) { this.x = this.radius; this.vx *= -0.3; }
                 if (this.x > width - this.radius) { this.x = width - this.radius; this.vx *= -0.3; }
                 if (this.y > gameAreaHeight - this.radius) {
                     this.y = gameAreaHeight - this.radius;
-                    this.vy *= -0.15; // 落地微弹
-                    this.vx *= 0.92;  // 地面摩擦
+                    this.vy *= -0.15;
+                    this.vx *= 0.92;
                 }
             }
         }
 
-        // 核心：强力物理引擎逻辑
+        // 核心：强制位移解算（解决重叠的核心）
         function solvePhysics() {
-            // 每一帧循环10次碰撞解算，彻底杜绝重叠
-            for (let subStep = 0; subStep < 10; subStep++) {
+            const steps = 10; // 迭代10次增加稳定性
+            for (let s = 0; s < steps; s++) {
                 for (let i = 0; i < fruits.length; i++) {
                     for (let j = i + 1; j < fruits.length; j++) {
                         let f1 = fruits[i];
@@ -121,36 +119,30 @@
 
                         if (dist < minDist) {
                             if (f1.type === f2.type && f1.type < 19) {
-                                // 合成逻辑
                                 f1.shouldRemove = f2.shouldRemove = true;
                                 let nf = new Fruit((f1.x + f2.x) / 2, (f1.y + f2.y) / 2, f1.type + 1);
                                 nf.isDropped = true;
                                 fruits.push(nf);
                                 score += (f1.type + 1) * 2;
-                                return; // 合成后跳出本轮循环防止报错
+                                return;
                             } else {
-                                // 强制排斥位移（防止穿模重叠的核心）
-                                let angle = Math.atan2(dy, dx);
-                                let pushDist = (minDist - dist) / 2;
-                                let pushX = Math.cos(angle) * pushDist;
-                                let pushY = Math.sin(angle) * pushDist;
-
-                                f1.x -= pushX; f1.y -= pushY;
-                                f2.x += pushX; f2.y += pushY;
-
-                                // 速度交换解算
+                                // 强制排斥（消除重叠）
                                 let nx = dx / dist;
                                 let ny = dy / dist;
-                                let relativeVelocityX = f1.vx - f2.vx;
-                                let relativeVelocityY = f1.vy - f2.vy;
-                                let velAlongNormal = relativeVelocityX * nx + relativeVelocityY * ny;
+                                let overlap = minDist - dist;
+                                f1.x -= nx * overlap * 0.5;
+                                f1.y -= ny * overlap * 0.5;
+                                f2.x += nx * overlap * 0.5;
+                                f2.y += ny * overlap * 0.5;
 
-                                if (velAlongNormal > 0) {
-                                    let j = -(1.2 * velAlongNormal) / 2;
-                                    let impulseX = j * nx;
-                                    let impulseY = j * ny;
-                                    f1.vx += impulseX; f1.vy += impulseY;
-                                    f2.vx -= impulseX; f2.vy -= impulseY;
+                                // 冲量交换（速度处理）
+                                let vRelX = f1.vx - f2.vx;
+                                let vRelY = f1.vy - f2.vy;
+                                let vNormal = vRelX * nx + vRelY * ny;
+                                if (vNormal > 0) {
+                                    let impulse = vNormal * 0.8;
+                                    f1.vx -= impulse * nx; f1.vy -= impulse * ny;
+                                    f2.vx += impulse * nx; f2.vy += impulse * ny;
                                 }
                             }
                         }
@@ -162,10 +154,10 @@
 
         function drawDangerLine() {
             ctx.save();
-            ctx.setLineDash([8, 8]);
-            // 只有当有水果靠近时，危险线才变红闪烁
-            ctx.strokeStyle = (dangerFrames > 30 && (Date.now() % 400 < 200)) ? "#ff0000" : "rgba(255, 100, 100, 0.5)";
-            ctx.lineWidth = 3;
+            ctx.setLineDash([10, 8]);
+            // 危险时红色闪烁
+            ctx.strokeStyle = (dangerFrames > 30 && Date.now() % 400 < 200) ? "#ff0000" : "rgba(255, 80, 80, 0.4)";
+            ctx.lineWidth = 4;
             ctx.beginPath();
             ctx.moveTo(0, dangerLineY);
             ctx.lineTo(width, dangerLineY);
@@ -178,25 +170,20 @@
             ctx.fillStyle = "#fff5dc";
             ctx.fillRect(0, 0, width, height);
 
-            // 底部地板
             ctx.fillStyle = "#8d6e63";
             ctx.fillRect(0, gameAreaHeight, width, height - gameAreaHeight);
 
             drawDangerLine();
             solvePhysics();
 
-            fruits.forEach(f => {
-                f.update();
-                f.draw();
-            });
-
+            fruits.forEach(f => { f.update(); f.draw(); });
             if (nextFruit) nextFruit.draw();
 
-            // 危险线逻辑判定
+            // 危险判定：水果最高点超过虚线
             let hasDanger = fruits.some(f => f.isDropped && (f.y - f.radius) < dangerLineY && Math.abs(f.vy) < 1);
             if (hasDanger) {
                 dangerFrames++;
-                if (dangerFrames > 150) { // 约2.5秒
+                if (dangerFrames > 120) {
                     isGameOver = true;
                     alert("爆仓啦！最终得分: " + score);
                     location.reload();
@@ -208,7 +195,6 @@
             ctx.fillStyle = "#4e342e";
             ctx.font = "bold 24px Arial";
             ctx.fillText(`得分: ${score}`, 20, height - 30);
-
             requestAnimationFrame(gameLoop);
         }
 
@@ -218,15 +204,20 @@
             gameAreaHeight = height - 70;
         }
 
-        canvas.addEventListener('mousemove', (e) => {
+        const handleInput = (x) => {
             if (nextFruit) {
-                let rect = canvas.getBoundingClientRect();
-                let x = e.clientX - rect.left;
                 nextFruit.x = Math.max(nextFruit.radius, Math.min(width - nextFruit.radius, x));
             }
+        };
+
+        canvas.addEventListener('mousemove', (e) => handleInput(e.offsetX));
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            let rect = canvas.getBoundingClientRect();
+            handleInput(e.touches[0].clientX - rect.left);
         });
 
-        canvas.addEventListener('mousedown', () => {
+        const drop = () => {
             if (!nextFruit || isGameOver) return;
             nextFruit.isDropped = true;
             fruits.push(nextFruit);
@@ -234,15 +225,10 @@
             setTimeout(() => {
                 nextFruit = new Fruit(width / 2, 60, Math.floor(Math.random() * 5));
             }, 600);
-        });
+        };
 
-        // 触屏支持
-        canvas.addEventListener('touchmove', (e) => {
-            e.preventDefault();
-            let rect = canvas.getBoundingClientRect();
-            let x = e.touches[0].clientX - rect.left;
-            if (nextFruit) nextFruit.x = Math.max(nextFruit.radius, Math.min(width - nextFruit.radius, x));
-        });
+        canvas.addEventListener('mousedown', drop);
+        canvas.addEventListener('touchend', (e) => { e.preventDefault(); drop(); });
 
         document.getElementById('startBtn').onclick = () => {
             document.getElementById('loader').classList.add('hidden');
