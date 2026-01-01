@@ -3,63 +3,63 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>合成大顾新-终极物理版</title>
+    <title>合成大顾新-终极物理增强版</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; touch-action: manipulation; }
-        body { font-family: 'Arial', sans-serif; background: #333; display: flex; justify-content: center; align-items: center; min-height: 100vh; overflow: hidden; }
-        #gameContainer { position: relative; width: 100vw; height: 100vh; max-width: 500px; background: #fff5dc; overflow: hidden; }
+        body { font-family: 'Arial', sans-serif; background: #222; display: flex; justify-content: center; align-items: center; min-height: 100vh; overflow: hidden; }
+        #gameContainer { position: relative; width: 100vw; height: 100vh; max-width: 450px; background: #fff5dc; overflow: hidden; }
         canvas { display: block; width: 100%; height: 100%; }
         #loader { position: absolute; top:0; left:0; width:100%; height:100%; background:#fff5dc; display:flex; flex-direction:column; justify-content:center; align-items:center; z-index:1000; }
-        .bar { width: 200px; height: 10px; background: #ddd; border-radius: 5px; margin-top: 15px; overflow: hidden; }
-        #progress { width: 0%; height: 100%; background: #ff7e5f; }
+        .bar-bg { width: 200px; height: 10px; background: #ddd; border-radius: 5px; margin-top: 20px; overflow: hidden; }
+        #bar { width: 0%; height: 100%; background: #ff7e5f; transition: width 0.1s; }
         .hidden { display: none !important; }
-        button { padding: 15px 40px; font-size: 20px; background: #ff7e5f; color: white; border: none; border-radius: 30px; cursor: pointer; font-weight: bold; }
+        button { padding: 15px 40px; font-size: 20px; background: #ff7e5f; color: white; border: none; border-radius: 30px; cursor: pointer; font-weight: bold; margin-top: 20px; }
     </style>
 </head>
 <body>
     <div id="gameContainer">
         <canvas id="gameCanvas"></canvas>
         <div id="loader">
-            <h2 id="msg">图片校验中...</h2>
-            <div class="bar"><div id="progress"></div></div>
-            <div id="btnDiv" class="hidden"><button id="startBtn">开始游戏</button></div>
+            <h2 id="status">正在校验图片资源...</h2>
+            <div class="bar-bg"><div id="bar"></div></div>
+            <div id="menu" class="hidden"><button id="startBtn">开始游戏</button></div>
         </div>
     </div>
 
 <script>
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
-    const progress = document.getElementById('progress');
-    const msg = document.getElementById('msg');
+    const bar = document.getElementById('bar');
+    const statusText = document.getElementById('status');
 
     let width, height, groundY;
     let fruits = [];
     let nextFruit = null;
     let score = 0;
     let isGameOver = false;
-    let dangerY = 180; // 危险线高度
-    let dangerTime = 0;
+    let dangerLineY = 160; 
+    let dangerCounter = 0;
 
-    // 严格控制半径，防止球体过大挤死
-    const radii = [22, 30, 38, 46, 54, 64, 74, 84, 94, 104, 114, 124, 134, 144, 154, 164, 174, 184, 194, 205];
-    const imgs = [];
+    // 半径配置：针对大图做了优化，防止球体过大
+    const radii = [20, 28, 36, 44, 52, 62, 72, 82, 92, 102, 112, 122, 132, 142, 152, 160, 168, 175, 185, 200];
+    const images = [];
     const TOTAL = 20;
     let loaded = 0;
 
-    // 1. 强制主路径资源加载
-    for (let i = 1; i <= TOTAL; i++) {
-        const img = new Image();
-        img.src = `./guxin${i}.png`;
-        img.onload = () => {
-            loaded++;
-            progress.style.width = (loaded/TOTAL*100) + '%';
-            if(loaded === TOTAL) {
-                msg.innerText = "资源加载成功！";
-                document.getElementById('btnDiv').classList.remove('hidden');
-            }
-        };
-        img.onerror = () => { msg.innerText = `缺失: guxin${i}.png`; msg.style.color = 'red'; };
-        imgs.push(img);
+    // 1. 资源加载
+    function initResources() {
+        for (let i = 1; i <= TOTAL; i++) {
+            const img = new Image();
+            img.src = `./guxin${i}.png`;
+            img.onload = () => {
+                loaded++;
+                bar.style.width = (loaded/TOTAL*100) + '%';
+                statusText.innerText = `已就绪 (${loaded}/${TOTAL})`;
+                if (loaded === TOTAL) document.getElementById('menu').classList.remove('hidden');
+            };
+            img.onerror = () => { statusText.innerText = `缺失文件: guxin${i}.png`; statusText.style.color = "red"; };
+            images.push(img);
+        }
     }
 
     class Fruit {
@@ -68,17 +68,20 @@
             this.radius = radii[type];
             this.vx = 0; this.vy = 0;
             this.isDropped = false;
+            this.removed = false;
         }
 
-        draw() {
+        draw(alpha = 1) {
             ctx.save();
+            ctx.globalAlpha = alpha;
             ctx.beginPath();
-            ctx.arc(this.x, this.y, this.radius, 0, Math.PI*2);
+            ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
             ctx.clip();
-            ctx.drawImage(imgs[this.type], this.x - this.radius, this.y - this.radius, this.radius*2, this.radius*2);
+            ctx.drawImage(images[this.type], this.x - this.radius, this.y - this.radius, this.radius * 2, this.radius * 2);
             ctx.restore();
+            
             ctx.beginPath();
-            ctx.arc(this.x, this.y, this.radius, 0, Math.PI*2);
+            ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
             ctx.strokeStyle = '#5d4037';
             ctx.lineWidth = 2;
             ctx.stroke();
@@ -86,14 +89,14 @@
 
         update() {
             if (!this.isDropped) return;
-            this.vy += 0.8; // 重力
+            this.vy += 0.8; // 稳定重力
             this.x += this.vx;
             this.y += this.vy;
 
-            // 碰到墙壁弹回
+            // 墙壁约束
             if (this.x < this.radius) { this.x = this.radius; this.vx *= -0.3; }
             if (this.x > width - this.radius) { this.x = width - this.radius; this.vx *= -0.3; }
-            // 碰到地面
+            // 地面约束
             if (this.y > groundY - this.radius) {
                 this.y = groundY - this.radius;
                 this.vy *= -0.2;
@@ -102,45 +105,46 @@
         }
     }
 
-    // 核心修复：高频硬体碰撞解算器
+    // 核心修复：多步硬体物理引擎
     function solvePhysics() {
-        // 增加迭代次数，每帧计算10次碰撞，防止穿透
+        // 每帧进行 10 次迭代计算，确保推开重叠
         for (let step = 0; step < 10; step++) {
             for (let i = 0; i < fruits.length; i++) {
                 for (let j = i + 1; j < fruits.length; j++) {
                     let f1 = fruits[i];
                     let f2 = fruits[j];
+                    if (f1.removed || f2.removed) continue;
+
                     let dx = f2.x - f1.x;
                     let dy = f2.y - f1.y;
-                    let dist = Math.sqrt(dx*dx + dy*dy);
+                    let dist = Math.sqrt(dx * dx + dy * dy);
                     let minDist = f1.radius + f2.radius;
 
                     if (dist < minDist) {
-                        // 如果类型相同，合成
                         if (f1.type === f2.type && f1.type < 19) {
-                            f1.dead = f2.dead = true;
-                            let newF = new Fruit((f1.x+f2.x)/2, (f1.y+f2.y)/2, f1.type+1);
-                            newF.isDropped = true;
-                            fruits.push(newF);
-                            score += f1.type + 1;
-                            return; // 合成后立即返回，防止报错
+                            f1.removed = f2.removed = true;
+                            let nf = new Fruit((f1.x + f2.x)/2, (f1.y + f2.y)/2, f1.type + 1);
+                            nf.isDropped = true;
+                            fruits.push(nf);
+                            score += (f1.type + 1);
+                            return; 
                         }
-                        
-                        // 强制推开逻辑：核心修复重叠
+                        // 强制位置校正 (Projection) - 解决重叠的核心
                         let overlap = minDist - dist;
                         let nx = dx / dist;
                         let ny = dy / dist;
-                        // 瞬间移动坐标，消除重叠
-                        f1.x -= nx * overlap * 0.5;
-                        f1.y -= ny * overlap * 0.5;
-                        f2.x += nx * overlap * 0.5;
-                        f2.y += ny * overlap * 0.5;
+                        let percent = 0.5; // 修正比例
+                        f1.x -= nx * overlap * percent;
+                        f1.y -= ny * overlap * percent;
+                        f2.x += nx * overlap * percent;
+                        f2.y += ny * overlap * percent;
 
-                        // 简单的速度交换
-                        let v1n = f1.vx * nx + f1.vy * ny;
-                        let v2n = f2.vx * nx + f2.vy * ny;
-                        if (v1n > v2n) {
-                            let impulse = (v1n - v2n) * 0.5;
+                        // 简单的动量交换
+                        let vRelX = f1.vx - f2.vx;
+                        let vRelY = f1.vy - f2.vy;
+                        let vNormal = vRelX * nx + vRelY * ny;
+                        if (vNormal > 0) {
+                            let impulse = vNormal * 0.5;
                             f1.vx -= impulse * nx; f1.vy -= impulse * ny;
                             f2.vx += impulse * nx; f2.vy += impulse * ny;
                         }
@@ -148,7 +152,7 @@
                 }
             }
         }
-        fruits = fruits.filter(f => !f.dead);
+        fruits = fruits.filter(f => !f.removed);
     }
 
     function gameLoop() {
@@ -156,40 +160,47 @@
         ctx.fillStyle = "#fff5dc";
         ctx.fillRect(0, 0, width, height);
 
-        // 绘制危险虚线
+        // 绘制地板
+        ctx.fillStyle = "#8d6e63";
+        ctx.fillRect(0, groundY, width, height - groundY);
+
+        // 绘制危险线：动态发光红色
+        ctx.save();
         ctx.beginPath();
         ctx.setLineDash([10, 10]);
-        ctx.strokeStyle = dangerTime > 30 ? "red" : "#ffbd9b";
-        ctx.moveTo(0, dangerY); ctx.lineTo(width, dangerY);
+        ctx.strokeStyle = dangerCounter > 30 ? "#ff0000" : "rgba(255, 0, 0, 0.4)";
+        ctx.lineWidth = 3;
+        ctx.moveTo(0, dangerLineY);
+        ctx.lineTo(width, dangerLineY);
         ctx.stroke();
-        ctx.setLineDash([]);
+        ctx.restore();
 
         solvePhysics();
 
-        let topFruitY = groundY;
+        let highestY = groundY;
         fruits.forEach(f => {
             f.update();
             f.draw();
-            if(f.isDropped) topFruitY = Math.min(topFruitY, f.y - f.radius);
+            if (f.isDropped) highestY = Math.min(highestY, f.y - f.radius);
         });
 
-        if (nextFruit) nextFruit.draw();
+        if (nextFruit) nextFruit.draw(0.8);
 
-        // 危险判定：只要最高的水果超过线
-        if (topFruitY < dangerY) {
-            dangerTime++;
-            if (dangerTime > 150) { // 约3秒
+        // 危险判定：只要最高的水果边沿越线
+        if (highestY < dangerLineY) {
+            dangerCounter++;
+            if (dangerCounter > 120) { // 2秒
                 isGameOver = true;
-                alert("游戏结束！得分：" + score);
+                alert("爆仓啦！最终得分: " + score);
                 location.reload();
             }
         } else {
-            dangerTime = 0;
+            dangerCounter = 0;
         }
 
         ctx.fillStyle = "#333";
         ctx.font = "bold 24px Arial";
-        ctx.fillText(`得分: ${score}`, 20, height - 30);
+        ctx.fillText(`得分: ${score}`, 20, height - 25);
         requestAnimationFrame(gameLoop);
     }
 
@@ -199,18 +210,25 @@
         groundY = height - 50;
     }
 
-    canvas.addEventListener('click', (e) => {
+    const drop = (x) => {
         if (!nextFruit || isGameOver) return;
+        nextFruit.x = Math.max(nextFruit.radius, Math.min(width - nextFruit.radius, x));
         nextFruit.isDropped = true;
         fruits.push(nextFruit);
         nextFruit = null;
         setTimeout(() => {
-            nextFruit = new Fruit(width/2, 60, Math.floor(Math.random()*5));
+            nextFruit = new Fruit(width/2, 60, Math.floor(Math.random() * 5));
         }, 600);
-    });
+    };
 
+    canvas.addEventListener('mousedown', (e) => drop(e.offsetX));
     canvas.addEventListener('mousemove', (e) => {
-        if (nextFruit) nextFruit.x = e.offsetX;
+        if (nextFruit) nextFruit.x = Math.max(nextFruit.radius, Math.min(width - nextFruit.radius, e.offsetX));
+    });
+    canvas.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        let rect = canvas.getBoundingClientRect();
+        drop(e.touches[0].clientX - rect.left);
     });
 
     document.getElementById('startBtn').onclick = () => {
@@ -219,7 +237,7 @@
         gameLoop();
     };
 
-    window.onload = () => { resize(); };
+    window.onload = () => { resize(); initResources(); };
 </script>
 </body>
 </html>
